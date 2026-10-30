@@ -1,0 +1,261 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile with role and configurable limits",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "User email address"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "admin"],
+          "description": "User role"
+        },
+        "botLimit": {
+          "type": "number",
+          "description": "Maximum active bots for this user"
+        },
+        "featureLimit": {
+          "type": "number",
+          "description": "Maximum uploaded features for this user"
+        },
+        "isSuspended": {
+          "type": "boolean",
+          "description": "Whether the user account is suspended"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp"
+        }
+      },
+      "required": ["email", "role", "botLimit", "featureLimit"]
+    },
+    "BotProfile": {
+      "title": "Bot Profile",
+      "description": "Saved Minecraft Java bot configuration profile",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner user ID"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Friendly profile name"
+        },
+        "serverHost": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Minecraft server hostname or IP"
+        },
+        "serverPort": {
+          "type": "number",
+          "description": "Minecraft server port"
+        },
+        "botUsername": {
+          "type": "string",
+          "maxLength": 32,
+          "description": "Minecraft in-game bot username"
+        },
+        "authType": {
+          "type": "string",
+          "enum": ["offline", "microsoft"],
+          "description": "Authentication mode"
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 16,
+          "description": "Target Minecraft version or auto"
+        },
+        "autoReconnect": {
+          "type": "boolean",
+          "description": "Whether to automatically reconnect on disconnect"
+        },
+        "reconnectDelay": {
+          "type": "number",
+          "description": "Reconnect delay in seconds"
+        },
+        "activeFeatures": {
+          "type": "array",
+          "description": "List of feature IDs enabled on this bot"
+        },
+        "featureConfigs": {
+          "type": "object",
+          "description": "Per-feature configuration values"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Update timestamp"
+        }
+      },
+      "required": ["userId", "name", "serverHost", "serverPort", "botUsername", "authType"]
+    },
+    "Feature": {
+      "title": "Custom Feature Package",
+      "description": "Uploaded custom modular bot feature script with manifest",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Uploader user ID"
+        },
+        "authorEmail": {
+          "type": "string",
+          "description": "Author email"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Feature display name"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Feature description"
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 16,
+          "description": "Semver version"
+        },
+        "entryPoint": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Entry file path, e.g. index.js"
+        },
+        "botApiVersion": {
+          "type": "string",
+          "maxLength": 16,
+          "description": "Supported bot API version"
+        },
+        "permissions": {
+          "type": "array",
+          "description": "Requested sandbox permissions"
+        },
+        "configSchema": {
+          "type": "string",
+          "description": "JSON schema string for feature options"
+        },
+        "code": {
+          "type": "string",
+          "description": "Extracted validated javascript code"
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Whether this feature has been submitted to the public directory"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["private", "pending", "approved", "rejected", "suspended"],
+          "description": "Moderation status"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Update timestamp"
+        }
+      },
+      "required": ["userId", "name", "version", "entryPoint", "code", "status"]
+    },
+    "ActivityLog": {
+      "title": "Activity Log",
+      "description": "System, user, bot, and security operation records",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "User ID who performed or owns the action"
+        },
+        "userEmail": {
+          "type": "string",
+          "description": "User email address"
+        },
+        "action": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Action name"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["user", "admin", "bot", "feature", "security"],
+          "description": "Event category"
+        },
+        "details": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "Additional event details"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "ISO timestamp"
+        }
+      },
+      "required": ["userId", "action", "category", "timestamp"]
+    },
+    "SystemSetting": {
+      "title": "System Settings",
+      "description": "Global platform settings and default limits",
+      "type": "object",
+      "properties": {
+        "defaultBotLimit": {
+          "type": "number",
+          "description": "Default maximum active bots per user"
+        },
+        "defaultFeatureLimit": {
+          "type": "number",
+          "description": "Default maximum uploaded features per user"
+        },
+        "allowPublicSubmissions": {
+          "type": "boolean",
+          "description": "Allow users to submit features publicly"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": ["defaultBotLimit", "defaultFeatureLimit"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User account documents containing roles and limits"
+    },
+    "/botProfiles/{profileId}": {
+      "schema": "BotProfile",
+      "description": "Minecraft Java bot configuration profiles"
+    },
+    "/features/{featureId}": {
+      "schema": "Feature",
+      "description": "Custom feature packages with manifest metadata and sandboxed code"
+    },
+    "/activityLogs/{logId}": {
+      "schema": "ActivityLog",
+      "description": "Platform audit and operational activity logs"
+    },
+    "/systemSettings/{settingId}": {
+      "schema": "SystemSetting",
+      "description": "Administrative platform configuration"
+    }
+  }
+}

@@ -1,0 +1,100 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'wingxmc26@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // USERS COLLECTION
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) &&
+        request.resource.data.role == 'user' &&
+        request.resource.data.isSuspended == false &&
+        request.resource.data.botLimit == 3 &&
+        request.resource.data.featureLimit == 5;
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.botLimit == resource.data.botLimit &&
+        request.resource.data.featureLimit == resource.data.featureLimit &&
+        request.resource.data.isSuspended == resource.data.isSuspended
+      );
+      allow delete: if isAdmin();
+    }
+
+    // BOT PROFILES
+    match /botProfiles/{profileId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid &&
+        request.resource.data.name is string && request.resource.data.name.size() <= 64 &&
+        request.resource.data.serverHost is string && request.resource.data.serverHost.size() <= 128 &&
+        request.resource.data.serverPort is number &&
+        request.resource.data.botUsername is string && request.resource.data.botUsername.size() <= 32;
+      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()) &&
+        (isAdmin() || request.resource.data.userId == resource.data.userId);
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // FEATURES
+    match /features/{featureId} {
+      allow get: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        (resource.data.isPublic == true && resource.data.status == 'approved') ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        (resource.data.isPublic == true && resource.data.status == 'approved') ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid &&
+        request.resource.data.name is string && request.resource.data.name.size() <= 64 &&
+        (request.resource.data.status == 'private' || request.resource.data.status == 'pending');
+      allow update: if isAdmin() || (
+        isSignedIn() && resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == resource.data.userId &&
+        (request.resource.data.status == resource.data.status || request.resource.data.status == 'pending')
+      );
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // ACTIVITY LOGS
+    match /activityLogs/{logId} {
+      allow get: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // SYSTEM SETTINGS
+    match /systemSettings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

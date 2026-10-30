@@ -1,0 +1,6 @@
+{
+  "name": "MineNode - Minecraft Java Bot Hosting Platform",
+  "description": "Professional Minecraft Java Edition bot hosting platform with real-time controls, Mineflayer engine, console logs, live chat, movement, inventory inspection, and secure custom features.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
