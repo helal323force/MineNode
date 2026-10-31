@@ -822,6 +822,7 @@ io.on('connection', (socket) => {
 // Vite Middleware / Static Serving
 // -------------------------------------------------------------
 import fs from 'fs';
+import { execSync } from 'child_process';
 
 async function startServer() {
   const isDev = process.env.NODE_ENV !== 'production';
@@ -833,18 +834,19 @@ async function startServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
-    console.log('[Server] Running in DEVELOPMENT mode with Vite middleware.');
+    console.log('[Server] Running in DEVELOPMENT mode.');
   } else {
     const distPath = path.resolve(__dirname, 'dist');
     
     if (!fs.existsSync(distPath)) {
-      console.error('**********************************************************');
-      console.error('PRODUCTION ERROR: "dist" directory not found!');
-      console.error('Path checked:', distPath);
-      console.error('Make sure you have run "npm run build" before "npm start".');
-      console.error('On Render: Update your Build Command to: npm install && npm run build');
-      console.error('**********************************************************');
-      process.exit(1);
+      console.log('[Server] Production "dist" folder not found. Starting automatic build...');
+      try {
+        execSync('npm run build', { stdio: 'inherit' });
+        console.log('[Server] Build completed successfully.');
+      } catch (err: any) {
+        console.error('[Server] Automatic build failed. Please run "npm run build" manually.');
+        process.exit(1);
+      }
     }
 
     app.use(express.static(distPath));
@@ -853,16 +855,17 @@ async function startServer() {
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
       } else {
-        res.status(500).send('Production build error: index.html missing in dist.');
+        res.status(500).send('Production build error: index.html missing.');
       }
     });
-    console.log('[Server] Running in PRODUCTION mode serving static assets.');
+    console.log('[Server] Running in PRODUCTION mode.');
   }
 
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`MineNode Minecraft Bot Hosting Server active on port ${PORT}`);
   });
 }
+
 
 
 // Clean shutdown

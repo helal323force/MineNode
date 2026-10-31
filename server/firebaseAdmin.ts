@@ -15,33 +15,25 @@ try {
         credential: cert(parsedKey),
         projectId: parsedKey.project_id || fallbackProjectId,
       });
-      console.log('Firebase Admin initialized with service account key.');
+      console.log('[Firebase] Admin SDK initialized with Service Account.');
     } else {
-      // In some environments (like GCP), we can try to initialize without explicit credentials
-      initializeApp({
-        projectId: fallbackProjectId
-      });
-      console.log('Firebase Admin initialized with default credentials.');
+      initializeApp({ projectId: fallbackProjectId || 'minenode-hosting' });
+      console.log('[Firebase] Admin SDK initialized with default credentials.');
     }
   }
   dbInstance = getFirestore();
 } catch (error: any) {
-  console.error('**********************************************************');
-  console.error('FIREBASE ADMIN ERROR:', error.message);
-  console.error('If you are seeing "Unable to detect a Project Id":');
-  console.error('1. Make sure FIREBASE_SERVICE_ACCOUNT_KEY is set in your environment variables.');
-  console.error('2. Or set VITE_FIREBASE_PROJECT_ID as a fallback.');
-  console.error('**********************************************************');
+  console.warn('[Firebase] Running in no-persistence mode (Firestore disabled).');
   
-  // Export a proxy or mock if initialization fails to avoid crashing everything immediately
   dbInstance = new Proxy({}, {
     get: (target, prop) => {
       return () => {
-        throw new Error(`Firestore operation "${String(prop)}" failed: Firebase Admin is not correctly initialized.`);
+        throw new Error(`Firestore operation "${String(prop)}" failed: Missing FIREBASE_SERVICE_ACCOUNT_KEY.`);
       };
     }
   });
 }
+
 
 
 export const db = dbInstance;
