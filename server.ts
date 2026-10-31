@@ -342,6 +342,36 @@ app.get('/api/bots/:profileId/inventory', verifyAuthToken, (req: Request, res: R
   res.json(items);
 });
 
+app.post('/api/bots/:profileId/inventory/equip', verifyAuthToken, async (req: Request, res: Response) => {
+  const user = req.user!;
+  const { profileId } = req.params;
+  const { slot, destination } = req.body;
+
+  const session = botManager.getSession(profileId);
+  if (session && session.profile.userId !== user.uid && user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const result = await botManager.equipInventoryItem(profileId, Number(slot), destination || 'hand');
+  if (!result.success) return res.status(400).json({ error: result.message });
+  res.json({ success: true, message: result.message });
+});
+
+app.post('/api/bots/:profileId/inventory/drop', verifyAuthToken, async (req: Request, res: Response) => {
+  const user = req.user!;
+  const { profileId } = req.params;
+  const { slot, count } = req.body;
+
+  const session = botManager.getSession(profileId);
+  if (session && session.profile.userId !== user.uid && user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const result = await botManager.dropInventoryItem(profileId, Number(slot), Number(count) || 1);
+  if (!result.success) return res.status(400).json({ error: result.message });
+  res.json({ success: true, message: result.message });
+});
+
 app.get('/api/bots/:profileId/players', verifyAuthToken, (req: Request, res: Response) => {
   const { profileId } = req.params;
   const players = botManager.getPlayers(profileId);
@@ -410,6 +440,22 @@ app.post('/api/bots/:profileId/automation', verifyAuthToken, (req: Request, res:
   }
 
   const result = botManager.updateAutomation(profileId, automations);
+  if (!result.success) {
+    return res.status(400).json({ error: result.message });
+  }
+  res.json({ success: true, message: result.message });
+});
+
+app.post('/api/bots/:profileId/sync-packets', verifyAuthToken, (req: Request, res: Response) => {
+  const user = req.user!;
+  const { profileId } = req.params;
+
+  const session = botManager.getSession(profileId);
+  if (session && session.profile.userId !== user.uid && user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const result = botManager.syncPackets(profileId);
   if (!result.success) {
     return res.status(400).json({ error: result.message });
   }

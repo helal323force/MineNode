@@ -29,3 +29,16 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #3f444b;
 }
+
+@keyframes spinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 12s linear infinite;
+}

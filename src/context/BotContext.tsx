@@ -38,6 +38,7 @@ interface BotContextType {
   clearConsole: (profileId: string) => Promise<void>;
   getInventory: (profileId: string) => Promise<InventoryItem[]>;
   updateBotAutomation: (profileId: string, automations: Partial<BotProfile>) => Promise<{ success: boolean; message?: string }>;
+  syncPackets: (profileId: string) => Promise<{ success: boolean; message: string }>;
   consoleLogs: Record<string, ConsoleLogMessage[]>;
   chatMessages: Record<string, ChatMessage[]>;
   onlinePlayers: Record<string, PlayerInfo[]>;
@@ -411,6 +412,20 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const syncPackets = async (profileId: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const res = await authFetch(`/api/bots/${profileId}/sync-packets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, message: data.error || 'Failed to sync packets' };
+      return { success: true, message: data.message || 'Position packets resynced.' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Packet sync failed' };
+    }
+  };
+
   const activeBotsCount = Object.values(activeStates).filter(
     s => s.status === 'online' || s.status === 'connecting' || s.status === 'reconnecting'
   ).length;
@@ -434,6 +449,7 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
         clearConsole,
         getInventory,
         updateBotAutomation,
+        syncPackets,
         consoleLogs,
         chatMessages,
         onlinePlayers,

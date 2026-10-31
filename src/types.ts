@@ -14,14 +14,25 @@ export interface BotProfile {
   autoLogin?: boolean;
   loginPassword?: string;
   loginCommand?: string;
-  // Automation settings
+  // Automation & Anti-Kick physics settings
   autoEat?: boolean;
   autoArmor?: boolean;
   autoTotem?: boolean;
   afkAntiKick?: boolean;
   guardMode?: boolean;
   autoFish?: boolean;
+  autoUpload?: boolean;
+  hostType?: 'custom' | 'railway' | 'render';
   autoMinerTarget?: { x: number; y: number; z: number } | null;
+  // Anti-Cheat & Rate Limit tuning
+  packetJitterMs?: number;
+  movementSpeedCap?: number;
+  humanizedPhysics?: boolean;
+  disableSprintOnServer?: boolean;
+  kickCooldownSec?: number;
+  autoFixMovePackets?: boolean;
+  zeroGravitySpawnGuard?: boolean;
+  stealthNinjaMode?: boolean;
   activeFeatures: string[];
   featureConfigs?: Record<string, Record<string, any>>;
   createdAt?: string;
@@ -36,6 +47,14 @@ export type BotConnectionStatus =
   | 'error'
   | 'kicked';
 
+export interface KickTelemetryInfo {
+  isKicked: boolean;
+  reason: string;
+  cooldownSec: number;
+  kickTime: number;
+  nextAllowedTime: number;
+}
+
 export interface BotLiveState {
   profileId: string;
   status: BotConnectionStatus;
@@ -48,6 +67,20 @@ export interface BotLiveState {
   dimension: string | null;
   errorMessage?: string;
   lastConnected?: string;
+  kickInfo?: KickTelemetryInfo | null;
+  gracePeriodActive?: boolean;
+  graceRemainingMs?: number;
+  packetSyncStatus?: {
+    lastSyncTime: string;
+    terrainLoaded: boolean;
+    packetErrorCount: number;
+    zeroGravityActive: boolean;
+  };
+  physicsTelemetry?: {
+    velocity: number;
+    packetRate: number;
+    antiCheatRisk: 'Low' | 'Medium' | 'High';
+  };
   activeAutomations?: {
     autoEat?: boolean;
     autoArmor?: boolean;
@@ -55,6 +88,7 @@ export interface BotLiveState {
     afkAntiKick?: boolean;
     guardMode?: boolean;
     autoFish?: boolean;
+    humanizedPhysics?: boolean;
   };
   serverInfo?: {
     host: string;
@@ -87,12 +121,23 @@ export interface PlayerInfo {
   uuid?: string;
 }
 
+export interface ItemEnchantment {
+  name: string;
+  level: number;
+  displayName: string;
+  shortName?: string;
+}
+
 export interface InventoryItem {
   slot: number;
   name: string;
   displayName: string;
   count: number;
   stackSize?: number;
+  durabilityUsed?: number;
+  maxDurability?: number;
+  enchants?: ItemEnchantment[];
+  category?: 'weapons' | 'armor' | 'food' | 'blocks' | 'tools' | 'other';
 }
 
 export interface FeatureManifest {

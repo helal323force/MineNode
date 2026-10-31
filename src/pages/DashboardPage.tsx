@@ -29,7 +29,8 @@ import {
   Fish,
   Footprints,
   Zap,
-  Sparkles
+  Sparkles,
+  Upload
 } from 'lucide-react';
 
 interface DashboardPageProps {
@@ -78,6 +79,8 @@ export function DashboardPage({ setCurrentTab }: DashboardPageProps) {
   const [afkAntiKick, setAfkAntiKick] = useState(false);
   const [guardMode, setGuardMode] = useState(false);
   const [autoFish, setAutoFish] = useState(false);
+  const [autoUpload, setAutoUpload] = useState(false);
+  const [hostType, setHostType] = useState<'custom' | 'railway' | 'render'>('custom');
 
   const runningCount = profiles.filter(p => activeStates[p.id]?.status === 'online').length;
   const activeCount = profiles.filter(p => {
@@ -107,6 +110,8 @@ export function DashboardPage({ setCurrentTab }: DashboardPageProps) {
     setAfkAntiKick(false);
     setGuardMode(false);
     setAutoFish(false);
+    setAutoUpload(false);
+    setHostType('custom');
     setModalOpen(true);
   };
 
@@ -130,6 +135,8 @@ export function DashboardPage({ setCurrentTab }: DashboardPageProps) {
     setAfkAntiKick(Boolean(p.afkAntiKick));
     setGuardMode(Boolean(p.guardMode));
     setAutoFish(Boolean(p.autoFish));
+    setAutoUpload(Boolean(p.autoUpload));
+    setHostType(p.hostType || 'custom');
     setModalOpen(true);
   };
 
@@ -141,62 +148,46 @@ export function DashboardPage({ setCurrentTab }: DashboardPageProps) {
     }
 
     const cleanHost = serverHost.trim().replace(/\s+/g, '');
-    const cleanUser = botUsername.trim().replace(/\s+/g, '_');
-    setIsSubmitting(true);
+    const profileData: Partial<BotProfile> = {
+      name,
+      serverHost: cleanHost,
+      serverPort,
+      botUsername: botUsername.trim(),
+      authType,
+      version,
+      autoReconnect,
+      reconnectDelay,
+      autoLogin,
+      loginPassword,
+      loginCommand,
+      autoEat,
+      autoArmor,
+      autoTotem,
+      afkAntiKick,
+      guardMode,
+      autoFish,
+      autoUpload,
+      hostType,
+      activeFeatures: editingProfile ? editingProfile.activeFeatures : [],
+    };
 
+    setIsSubmitting(true);
+    setFeedbackMessage(null);
     try {
-      if (editingProfile) {
-        await updateProfile({
-          ...editingProfile,
-          name: name.trim(),
-          serverHost: cleanHost,
-          serverPort: Number(serverPort) || 25565,
-          botUsername: cleanUser,
-          authType,
-          version,
-          autoReconnect,
-          reconnectDelay: Number(reconnectDelay) || 15,
-          autoLogin,
-          loginPassword: loginPassword.trim() || undefined,
-          loginCommand: loginCommand || 'auto',
-          autoEat,
-          autoArmor,
-          autoTotem,
-          afkAntiKick,
-          guardMode,
-          autoFish,
-        });
-        setModalOpen(false);
-        setFeedbackMessage({ type: 'success', text: `Profile "${name}" successfully updated.` });
+      const isEdit = !!editingProfile;
+      let newId = isEdit ? editingProfile!.id : '';
+      if (isEdit) {
+        await updateProfile({ ...editingProfile, ...profileData } as BotProfile);
       } else {
-        const newId = await createProfile({
-          name: name.trim(),
-          serverHost: cleanHost,
-          serverPort: Number(serverPort) || 25565,
-          botUsername: cleanUser,
-          authType,
-          version,
-          autoReconnect,
-          reconnectDelay: Number(reconnectDelay) || 15,
-          autoLogin,
-          loginPassword: loginPassword.trim() || undefined,
-          loginCommand: loginCommand || 'auto',
-          autoEat,
-          autoArmor,
-          autoTotem,
-          afkAntiKick,
-          guardMode,
-          autoFish,
-          activeFeatures: ['feat-auto-greet', 'feat-auto-login'],
-        });
-        setSelectedProfileId(newId);
-        setModalOpen(false);
-        setFeedbackMessage({ 
-          type: 'success', 
-          text: `Bot profile "${name}" successfully created!`,
-          createdProfileId: newId 
-        });
+        newId = await createProfile(profileData as Omit<BotProfile, 'id' | 'userId'>);
       }
+      setSelectedProfileId(newId);
+      setModalOpen(false);
+      setFeedbackMessage({ 
+        type: 'success', 
+        text: `Bot profile "${name}" successfully ${isEdit ? 'updated' : 'created'}!`,
+        createdProfileId: newId 
+      });
     } catch (err: any) {
       setFeedbackMessage({ type: 'error', text: err.message || 'Failed to save profile' });
     } finally {
@@ -246,6 +237,372 @@ export function DashboardPage({ setCurrentTab }: DashboardPageProps) {
       setFeedbackMessage({ type: 'success', text: `Profile "${profileName}" deleted.` });
     }
   };
+
+  const renderModal = () => (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-hidden animate-in fade-in duration-150">
+      <div className="bg-[#121417] border border-neutral-800 rounded-t-2xl sm:rounded-2xl w-full max-w-xl max-h-[92vh] sm:max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800 shrink-0 bg-[#121417]">
+          <div>
+            <h3 className="text-base font-bold text-white tracking-tight">
+              {editingProfile ? 'Edit Bot Profile' : 'Configure New Minecraft Bot'}
+            </h3>
+            <p className="text-[11px] text-neutral-400 mt-0.5">
+              {editingProfile ? 'Modify server connection and automation settings' : 'Deploy a new Java Edition bot session to your server'}
+            </p>
+          </div>
+          <button
+            onClick={() => setModalOpen(false)}
+            className="text-neutral-400 hover:text-white p-1.5 rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
+            aria-label="Close dialog"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSaveProfile} className="flex flex-col flex-1 overflow-hidden">
+          <div className="overflow-y-auto overscroll-contain px-5 py-4 space-y-4 flex-1">
+            <div>
+              <label className="block text-xs font-medium text-neutral-300 mb-1">Hosting Platform</label>
+              <select
+                value={hostType}
+                onChange={(e) => {
+                  setHostType(e.target.value as any);
+                  if (e.target.value === 'railway') setServerHost('railway.app');
+                  else if (e.target.value === 'render') setServerHost('render.com');
+                }}
+                className="w-full px-3 py-2 bg-[#171a1e] border border-neutral-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 mb-3"
+              >
+                <option value="custom">Custom (Manual Host)</option>
+                <option value="railway">Railway</option>
+                <option value="render">Render</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-300 mb-1">Profile Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Hypixel Lobby Bot"
+                required
+                className="w-full px-3 py-2 bg-[#171a1e] border border-neutral-800 rounded-lg text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-neutral-300">Server IP / Hostname</label>
+                  {serverHost.includes(' ') && (
+                    <span className="text-[10px] text-amber-400">Spaces stripped automatically</span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  value={serverHost}
+                  onChange={(e) => setServerHost(e.target.value)}
+                  placeholder="mc.hypixel.net or localhost"
+                  required
+                  className="w-full px-3 py-2 bg-[#171a1e] border border-neutral-800 rounded-lg text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 font-mono"
+                />
+                <div className="text-[10px] text-neutral-500 mt-1">Domain or IP without spaces (e.g. play.hypixel.net)</div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-300 mb-1">Port</label>
+                <input
+                  type="number"
+                  value={serverPort}
+                  onChange={(e) => setServerPort(Number(e.target.value))}
+                  required
+                  className="w-full px-3 py-2 bg-[#171a1e] border border-neutral-800 rounded-lg text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-neutral-300 mb-1">Bot Username</label>
+              <input
+                type="text"
+                value={botUsername}
+                onChange={(e) => setBotUsername(e.target.value)}
+                placeholder="Bot_Sentinel"
+                required
+                className="w-full px-3 py-2 bg-[#171a1e] border border-neutral-800 rounded-lg text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 font-mono"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-neutral-300 mb-1">Authentication Mode</label>
+                <select
+                  value={authType}
+                  onChange={(e: any) => setAuthType(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#171a1e] border border-neutral-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="offline">Offline / Cracked</option>
+                  <option value="microsoft">Microsoft OAuth (Premium)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-neutral-300 mb-1">Minecraft Version</label>
+                <select
+                  value={version}
+                  onChange={(e) => setVersion(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#171a1e] border border-neutral-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="auto">Auto-negotiate (Recommended)</option>
+                  <option value="1.20.4">1.20.4</option>
+                  <option value="1.20.2">1.20.2</option>
+                  <option value="1.19.4">1.19.4</option>
+                  <option value="1.18.2">1.18.2</option>
+                  <option value="1.16.5">1.16.5</option>
+                  <option value="1.12.2">1.12.2</option>
+                  <option value="1.8.9">1.8.9</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-neutral-800/80 flex items-center justify-between">
+              <div>
+                <div className="text-xs font-medium text-white">Automatic Reconnect</div>
+                <div className="text-[11px] text-neutral-500">Retry connection after disconnects</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={autoReconnect}
+                onChange={(e) => setAutoReconnect(e.target.checked)}
+                className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+              />
+            </div>
+
+            {autoReconnect && (
+              <div>
+                <label className="block text-xs font-medium text-neutral-300 mb-1">Reconnect Delay (seconds)</label>
+                <input
+                  type="number"
+                  min={5}
+                  max={300}
+                  value={reconnectDelay}
+                  onChange={(e) => setReconnectDelay(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-[#171a1e] border border-neutral-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+            )}
+
+            {/* Auto-Login Configuration Section */}
+            <div className="pt-3 border-t border-neutral-800/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-medium text-white flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Auto-Login System (AuthMe / nLogin)</span>
+                  </div>
+                  <div className="text-[11px] text-neutral-500">Automatically executes /login or /register upon join</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={autoLogin}
+                  onChange={(e) => setAutoLogin(e.target.checked)}
+                  className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                />
+              </div>
+
+              {autoLogin && (
+                <div className="bg-[#16181b] p-3 rounded-xl border border-neutral-800 space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-neutral-300">Server Password</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="text-[10px] text-neutral-400 hover:text-white flex items-center gap-1 cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                        <span>{showPassword ? 'Hide' : 'Show'}</span>
+                      </button>
+                    </div>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      placeholder="Enter password for /login & /register"
+                      className="w-full px-3 py-2 bg-[#121417] border border-neutral-800 rounded-lg text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                    <div className="text-[10px] text-neutral-500 mt-1">
+                      Stored safely in your profile. Never revealed publicly.
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-300 mb-1">Authentication Mode</label>
+                    <select
+                      value={loginCommand}
+                      onChange={(e) => setLoginCommand(e.target.value)}
+                      className="w-full px-3 py-2 bg-[#121417] border border-neutral-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="auto">Auto-detect (/login & /register prompts)</option>
+                      <option value="/login {password}">Always /login {`{password}`}</option>
+                      <option value="/register {password} {password}">Always /register {`{password} {password}`}</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Built-in Automation Suite Configuration */}
+            <div className="pt-3 border-t border-neutral-800/80 space-y-2">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="w-4 h-4 text-emerald-400" />
+                <div>
+                  <div className="text-xs font-semibold text-white">Bot Automation Suite</div>
+                  <div className="text-[11px] text-neutral-500">Autonomous survivability and utilities</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <label className="flex items-center justify-between p-2.5 bg-[#16181b] border border-neutral-800/80 rounded-xl cursor-pointer hover:border-neutral-700 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <Utensils className="w-3.5 h-3.5 text-amber-400" />
+                    <div>
+                      <div className="font-medium text-neutral-200">Auto-Eat</div>
+                      <div className="text-[10px] text-neutral-500">Consumes food when hungry</div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={autoEat}
+                    onChange={(e) => setAutoEat(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between p-2.5 bg-[#16181b] border border-neutral-800/80 rounded-xl cursor-pointer hover:border-neutral-700 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-3.5 h-3.5 text-blue-400" />
+                    <div>
+                      <div className="font-medium text-neutral-200">Auto-Armor</div>
+                      <div className="text-[10px] text-neutral-500">Equips highest defense armor</div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={autoArmor}
+                    onChange={(e) => setAutoArmor(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between p-2.5 bg-[#16181b] border border-neutral-800/80 rounded-xl cursor-pointer hover:border-neutral-700 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-3.5 h-3.5 text-yellow-400" />
+                    <div>
+                      <div className="font-medium text-neutral-200">Auto-Totem</div>
+                      <div className="text-[10px] text-neutral-500">Equips Totem to offhand</div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={autoTotem}
+                    onChange={(e) => setAutoTotem(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between p-2.5 bg-[#16181b] border border-neutral-800/80 rounded-xl cursor-pointer hover:border-neutral-700 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <Footprints className="w-3.5 h-3.5 text-purple-400" />
+                    <div>
+                      <div className="font-medium text-neutral-200">AFK Anti-Kick</div>
+                      <div className="text-[10px] text-neutral-500">Randomized subtle movement</div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={afkAntiKick}
+                    onChange={(e) => setAfkAntiKick(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between p-2.5 bg-[#16181b] border border-neutral-800/80 rounded-xl cursor-pointer hover:border-neutral-700 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <Crosshair className="w-3.5 h-3.5 text-red-400" />
+                    <div>
+                      <div className="font-medium text-neutral-200">Guard Mode</div>
+                      <div className="text-[10px] text-neutral-500">Defends against nearby mobs</div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={guardMode}
+                    onChange={(e) => setGuardMode(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between p-2.5 bg-[#16181b] border border-neutral-800/80 rounded-xl cursor-pointer hover:border-neutral-700 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <Fish className="w-3.5 h-3.5 text-cyan-400" />
+                    <div>
+                      <div className="font-medium text-neutral-200">Auto-Fish</div>
+                      <div className="text-[10px] text-neutral-500">Auto rod cast & catch</div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={autoFish}
+                    onChange={(e) => setAutoFish(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                  />
+                </label>
+                
+                <label className="flex items-center justify-between p-2.5 bg-[#16181b] border border-neutral-800/80 rounded-xl cursor-pointer hover:border-neutral-700 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <Upload className="w-3.5 h-3.5 text-sky-400" />
+                    <div>
+                      <div className="font-medium text-neutral-200">Auto-Upload</div>
+                      <div className="text-[10px] text-neutral-500">Auto-upload logs to dashboard</div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={autoUpload}
+                    onChange={(e) => setAutoUpload(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 border-t border-neutral-800 bg-[#0e1013] shrink-0 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setModalOpen(false)}
+              disabled={isSubmitting}
+              className="px-4 py-2 text-xs font-medium text-neutral-400 hover:text-white bg-neutral-900 rounded-lg transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-5 py-2 text-xs font-semibold text-neutral-950 bg-emerald-400 hover:bg-emerald-300 disabled:opacity-50 rounded-lg transition-colors cursor-pointer flex items-center gap-2 shadow-sm"
+            >
+              {isSubmitting && (
+                <div className="w-3.5 h-3.5 border-2 border-neutral-950 border-t-transparent rounded-full animate-spin" />
+              )}
+              <span>{isSubmitting ? (editingProfile ? 'Saving...' : 'Creating...') : (editingProfile ? 'Save Changes' : 'Create Profile')}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+
+
+
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -354,7 +711,7 @@ export function DashboardPage({ setCurrentTab }: DashboardPageProps) {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4 transition-all duration-300 ease-in-out">
             {profiles.map((p) => {
               const liveState = activeStates[p.id];
               const status = liveState?.status || 'stopped';
