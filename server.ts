@@ -821,6 +821,8 @@ io.on('connection', (socket) => {
 // -------------------------------------------------------------
 // Vite Middleware / Static Serving
 // -------------------------------------------------------------
+import fs from 'fs';
+
 async function startServer() {
   const isDev = process.env.NODE_ENV !== 'production';
 
@@ -831,18 +833,37 @@ async function startServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
+    console.log('[Server] Running in DEVELOPMENT mode with Vite middleware.');
   } else {
     const distPath = path.resolve(__dirname, 'dist');
+    
+    if (!fs.existsSync(distPath)) {
+      console.error('**********************************************************');
+      console.error('PRODUCTION ERROR: "dist" directory not found!');
+      console.error('Path checked:', distPath);
+      console.error('Make sure you have run "npm run build" before "npm start".');
+      console.error('On Render: Update your Build Command to: npm install && npm run build');
+      console.error('**********************************************************');
+      process.exit(1);
+    }
+
     app.use(express.static(distPath));
     app.get('*', (req: Request, res: Response) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const indexPath = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(500).send('Production build error: index.html missing in dist.');
+      }
     });
+    console.log('[Server] Running in PRODUCTION mode serving static assets.');
   }
 
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`MineNode Minecraft Bot Hosting Server active on port ${PORT}`);
   });
 }
+
 
 // Clean shutdown
 process.on('SIGINT', () => {
