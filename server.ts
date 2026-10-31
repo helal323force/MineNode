@@ -9,6 +9,7 @@ import { botManager } from './server/botManager.js';
 import { parseZipFeature, validateFeaturePackage } from './server/featureSandbox.js';
 import { verifyAuthToken, requireAdmin, userCustomLimits, ADMIN_EMAIL } from './server/authMiddleware.js';
 import { CustomFeature, ActivityLog } from './src/types.js';
+import { db } from './server/firebaseAdmin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -152,10 +153,36 @@ const defaultFeatures: CustomFeature[] = [
   }
 ];
 
-for (const f of defaultFeatures) {
-  featuresStore.set(f.id, f);
-  botManager.registerFeature(f);
+async function initializeFeatures() {
+  try {
+    const featCol = db.collection('features');
+    const snapshot = await featCol.get();
+    
+    if (snapshot.empty) {
+      console.log('Seeding default features...');
+      for (const f of defaultFeatures) {
+        await featCol.doc(f.id).set(f);
+        featuresStore.set(f.id, f);
+        botManager.registerFeature(f);
+      }
+    } else {
+      snapshot.forEach((doc: any) => {
+        const feat = doc.data() as CustomFeature;
+        featuresStore.set(feat.id, feat);
+        botManager.registerFeature(feat);
+      });
+      console.log(`Loaded ${featuresStore.size} features from Firestore.`);
+    }
+  } catch (error: any) {
+    console.warn('[Features] Could not load features from Firestore, using defaults only:', error.message);
+    for (const f of defaultFeatures) {
+      featuresStore.set(f.id, f);
+      botManager.registerFeature(f);
+    }
+  }
 }
+
+initializeFeatures().catch(console.error);
 
 // Multer memory storage for uploaded feature ZIPs
 const upload = multer({
@@ -529,6 +556,7 @@ app.post('/api/features/upload', verifyAuthToken, upload.single('package'), asyn
 
   featuresStore.set(featureId, newFeature);
   botManager.registerFeature(newFeature);
+  await db.collection('features').doc(featureId).set(newFeature);
 
   recordActivity(
     user.uid,
