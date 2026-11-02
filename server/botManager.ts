@@ -416,8 +416,27 @@ export class BotManager {
 
       bot.on('messagestr', (message: string) => {
         if (!message || message.trim().length === 0) return;
+        
         this.addLog(profile.id, 'info', `[Server] ${message}`);
         handleAuthMePrompt(message);
+
+        // Capture almost everything that isn't a known system status as chat
+        // to ensure user doesn't miss important game context.
+        const isSystem = message.startsWith('[Server]') || message.startsWith('[Bot]');
+        
+        if (!isSystem || message.includes(':') || message.includes('>>')) {
+          const chatItem: ChatMessage = {
+            id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            profileId: profile.id,
+            sender: 'Server/Broadcast',
+            message: message,
+            isBot: false,
+            timestamp: new Date().toLocaleTimeString(),
+          };
+          session.chatMessages.push(chatItem);
+          if (session.chatMessages.length > 200) session.chatMessages.shift();
+          this.emitToBotRoom(profile.id, 'bot:chat', chatItem);
+        }
       });
 
       bot.on('health', () => {

@@ -19,7 +19,9 @@ declare global {
 // In-memory or fallback user limits store when backend Firestore admin SDK isn't present
 export const userCustomLimits = new Map<string, { botLimit: number; featureLimit: number; isSuspended: boolean }>();
 
-export function verifyAuthToken(req: Request, res: Response, next: NextFunction) {
+import { auth, db } from './firebaseAdmin.js';
+
+export async function verifyAuthToken(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Missing or malformed Authorization header' });
@@ -31,32 +33,32 @@ export function verifyAuthToken(req: Request, res: Response, next: NextFunction)
   }
 
   try {
-    // Attempt decoding Firebase JWT payload (header.payload.signature)
-    const parts = token.split('.');
-    if (parts.length >= 2) {
-      const payloadJson = Buffer.from(parts[1], 'base64').toString('utf8');
-      const payload = JSON.parse(payloadJson);
-      
-      const email = payload.email || '';
-      const uid = payload.user_id || payload.sub || payload.uid;
-      const isAdmin = email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+    const decodedToken = await auth.verifyIdToken(token);
+    const email = decodedToken.email || '';
+    const uid = decodedToken.uid;
+    const isAdmin = email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
-      // Check if suspended
-      const custom = userCustomLimits.get(uid);
-      if (custom && custom.isSuspended) {
-        return res.status(403).json({ error: 'This user account has been suspended by an administrator.' });
-      }
+    // Fetch user profile from Firestore to check suspension/role
+    const userDoc = await db.collection('users').doc(uid).get();
+    let isSuspended = false;
+    let actualRole: 'admin' | 'user' = isAdmin ? 'admin' : 'user';
 
-      req.user = {
-        uid,
-        email,
-        role: isAdmin ? 'admin' : 'user',
-      };
-      return next();
+    if (userDoc.exists) {
+      const userData = userDoc.data();
+      isSuspended = !!userData?.isSuspended;
+      if (userData?.role) actualRole = userData.role;
     }
 
-    // Direct fallback for developer mode
-    return res.status(401).json({ error: 'Invalid authentication credentials' });
+    if (isSuspended) {
+      return res.status(403).json({ error: 'This user account has been suspended by an administrator.' });
+    }
+
+    req.user = {
+      uid,
+      email,
+      role: actualRole,
+    };
+    return next();
   } catch (err: any) {
     return res.status(401).json({ error: `Authentication validation error: ${err.message}` });
   }

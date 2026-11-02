@@ -76,7 +76,8 @@ export function BotControlPanel({ setCurrentTab }: BotControlPanelProps) {
     syncPackets,
     consoleLogs, 
     chatMessages, 
-    onlinePlayers 
+    onlinePlayers,
+    features: availableFeatures
   } = useBot();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'automations' | 'movement' | 'radar' | 'macros' | 'console' | 'chat' | 'players' | 'inventory' | 'features' | 'settings'>('overview');
@@ -84,7 +85,6 @@ export function BotControlPanel({ setCurrentTab }: BotControlPanelProps) {
   const [chatInput, setChatInput] = useState('');
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [autoScroll, setAutoScroll] = useState(true);
-  const [availableFeatures, setAvailableFeatures] = useState<CustomFeature[]>([]);
   const [actionLoading, setActionLoading] = useState(false);
   const [isSyncingPackets, setIsSyncingPackets] = useState(false);
   const [packetSyncNotice, setPacketSyncNotice] = useState<string | null>(null);
@@ -271,20 +271,6 @@ export function BotControlPanel({ setCurrentTab }: BotControlPanelProps) {
     }
   }, [currentProfile, activeTab]);
 
-  // Fetch custom features
-  useEffect(() => {
-    const fetchFeatures = async () => {
-      try {
-        const res = await authFetch('/api/features');
-        if (res.ok) {
-          const list = await res.json();
-          setAvailableFeatures(list);
-        }
-      } catch (e) {}
-    };
-    fetchFeatures();
-  }, [activeTab]);
-
   const handleStart = async () => {
     if (!currentProfile) return;
     setActionLoading(true);
@@ -314,7 +300,7 @@ export function BotControlPanel({ setCurrentTab }: BotControlPanelProps) {
     await sendChat(currentProfile.id, msg);
   };
 
-  const handleMoveButton = async (control: 'forward' | 'back' | 'left' | 'right' | 'jump' | 'sprint', isDown: boolean) => {
+  const handleMoveButton = async (control: string, isDown: boolean) => {
     if (!currentProfile) return;
     setActiveControls(prev => ({ ...prev, [control]: isDown }));
     await sendMovement(currentProfile.id, control, isDown);
@@ -1277,7 +1263,7 @@ export function BotControlPanel({ setCurrentTab }: BotControlPanelProps) {
             botUsername={currentProfile.botUsername}
             onWalkToWaypoint={(x, y, z) => {
               soundFx.playSuccess();
-              sendChat(currentProfile.id, `/tp ${currentProfile.botUsername} ${x} ${y} ${z}`);
+              sendChat(currentProfile.id, `/tpa ${currentProfile.botUsername} ${x} ${y} ${z}`);
             }}
           />
         </div>
@@ -1471,16 +1457,30 @@ export function BotControlPanel({ setCurrentTab }: BotControlPanelProps) {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-neutral-800 text-[10px]">
+                    <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-neutral-800 text-[10px]">
                       <button
                         onClick={() => {
                           soundFx.playClick();
-                          sendChat(currentProfile.id, `/tp ${p.username}`);
+                          sendChat(currentProfile.id, `/tpa ${p.username}`);
                         }}
                         disabled={status !== 'online'}
                         className="py-1 px-2 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-800 rounded-md font-mono font-semibold transition-colors disabled:opacity-40 cursor-pointer text-center"
+                        title="Teleport Request"
                       >
-                        /tp
+                        /tpa
+                      </button>
+                      <button
+                        onClick={() => {
+                          soundFx.playClick();
+                          const pattern = currentProfile.customCommandPattern || '/edit {player}';
+                          const cmd = pattern.replace('{player}', p.username);
+                          sendChat(currentProfile.id, cmd);
+                        }}
+                        disabled={status !== 'online'}
+                        className="py-1 px-2 bg-neutral-900 hover:bg-neutral-800 text-emerald-400 border border-neutral-800 rounded-md font-mono font-semibold transition-colors disabled:opacity-40 cursor-pointer text-center"
+                        title={currentProfile.customCommandName || 'Edit'}
+                      >
+                        {currentProfile.customCommandName || 'Edit'}
                       </button>
                       <button
                         onClick={() => {

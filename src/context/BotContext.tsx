@@ -7,7 +7,8 @@ import {
   ConsoleLogMessage, 
   ChatMessage, 
   PlayerInfo, 
-  InventoryItem 
+  InventoryItem,
+  CustomFeature
 } from '../types.js';
 import { 
   db, 
@@ -42,6 +43,7 @@ interface BotContextType {
   consoleLogs: Record<string, ConsoleLogMessage[]>;
   chatMessages: Record<string, ChatMessage[]>;
   onlinePlayers: Record<string, PlayerInfo[]>;
+  features: CustomFeature[];
   activeBotsCount: number;
 }
 
@@ -54,6 +56,7 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
   const [consoleLogs, setConsoleLogs] = useState<Record<string, ConsoleLogMessage[]>>({});
   const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({});
   const [onlinePlayers, setOnlinePlayers] = useState<Record<string, PlayerInfo[]>>({});
+  const [features, setFeatures] = useState<CustomFeature[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
 
@@ -130,15 +133,30 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const list: BotProfile[] = [];
         snapshot.forEach(docSnap => {
-          list.push({ id: docSnap.id, ...docSnap.data() } as BotProfile);
+          const data = docSnap.data();
+          // Filter out any documents that might have a soft-delete flag, 
+          // though we will shift to hard-delete.
+          if (!data.deleted) {
+            list.push({ id: docSnap.id, ...data } as BotProfile);
+          }
         });
+        
+        // Sort by createdAt so the order remains consistent across browsers
+        list.sort((a, b) => {
+          const timeA = new Date(a.createdAt || 0).getTime();
+          const timeB = new Date(b.createdAt || 0).getTime();
+          return timeA - timeB;
+        });
+
         setProfiles(list);
+        saveProfilesLocal(list); // Keep cache updated for offline mode
+        
         if (list.length > 0 && !selectedProfileId) {
           setSelectedProfileId(list[0].id);
         }
       }, async (error) => {
-        // Fallback to local storage if Firestore permissions or offline
-        console.warn('Firestore subscription fallback:', error);
+        console.warn('Firestore subscription error:', error);
+        // Only load from local if we are truly disconnected or have permission issues
         loadLocalProfiles();
       });
 
@@ -158,6 +176,33 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (e) {}
       }
+    }
+  }, [currentUser]);
+
+  // Subscribe to custom features
+  useEffect(() => {
+    if (!currentUser) {
+      setFeatures([]);
+      return;
+    }
+
+    try {
+      const q = query(collection(db, 'features'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const list: CustomFeature[] = [];
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data();
+          // Show user's own features or approved public ones
+          if (data.userId === currentUser.uid || (data.isPublic && data.status === 'approved')) {
+            list.push({ id: docSnap.id, ...data } as CustomFeature);
+          }
+        });
+        setFeatures(list);
+      });
+
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn('Features subscription error:', e);
     }
   }, [currentUser]);
 
@@ -211,42 +256,22 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
       updatedAt: new Date().toISOString(),
     };
 
-    // Update local state immediately so UI responds instantly without any hang
-    setProfiles(prev => {
-      const updated = [...prev, newProfile];
-      saveProfilesLocal(updated);
-      return updated;
-    });
-
+    // We no longer update local state manually here. 
+    // We let onSnapshot handle it when the document hits Firestore.
+    // This prevents "flicker" and ensuring data is actually saved.
+    await setDoc(doc(db, 'botProfiles', newId), newProfile);
     setSelectedProfileId(newId);
-
-    // Sync to Firestore in background without blocking modal close or UI
-    Promise.race([
-      setDoc(doc(db, 'botProfiles', newId), newProfile),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore sync timeout')), 2000))
-    ]).catch(e => {
-      console.warn('Firestore sync note (cached locally):', e);
-    });
-
     return newId;
   };
 
   const updateProfile = async (updated: BotProfile): Promise<void> => {
     if (!currentUser) throw new Error('Authentication required');
     const toSave = { ...updated, updatedAt: new Date().toISOString() };
-
-    setProfiles(prev => {
-      const list = prev.map(p => p.id === updated.id ? toSave : p);
-      saveProfilesLocal(list);
-      return list;
-    });
-
-    Promise.race([
-      updateDoc(doc(db, 'botProfiles', updated.id), toSave),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore sync timeout')), 2000))
-    ]).catch(e => {
-      console.warn('Firestore update note (cached locally):', e);
-    });
+    
+    // Optimistic update for UI speed, but Firestore is the source of truth
+    setProfiles(prev => prev.map(p => p.id === updated.id ? toSave : p));
+    
+    await updateDoc(doc(db, 'botProfiles', updated.id), toSave as any);
   };
 
   const deleteProfile = async (id: string): Promise<void> => {
@@ -257,23 +282,25 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
       await stopBot(id);
     } catch (e) {}
 
-    setProfiles(prev => {
-      const list = prev.filter(p => p.id !== id);
-      saveProfilesLocal(list);
-      return list;
-    });
+    // Firestore hard delete
+    const { deleteDoc: firestoreDeleteDoc } = await import('../firebase.js');
+    await firestoreDeleteDoc(doc(db, 'botProfiles', id));
+
+    // Also clear from local cache to prevent reappearance on reload
+    const stored = localStorage.getItem(`minename_profiles_${currentUser.uid}`);
+    if (stored) {
+      try {
+        const list = JSON.parse(stored) as BotProfile[];
+        const updated = list.filter(p => p.id !== id);
+        localStorage.setItem(`minename_profiles_${currentUser.uid}`, JSON.stringify(updated));
+      } catch (e) {}
+    }
 
     if (selectedProfileId === id) {
       setSelectedProfileId(profiles.find(p => p.id !== id)?.id || null);
     }
-
-    Promise.race([
-      setDoc(doc(db, 'botProfiles', id), { deleted: true }, { merge: true }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore sync timeout')), 2000))
-    ]).catch(e => {
-      console.warn('Firestore delete note:', e);
-    });
   };
+
 
   const startBot = async (profile: BotProfile): Promise<{ success: boolean; message: string }> => {
     try {
@@ -453,6 +480,7 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
         consoleLogs,
         chatMessages,
         onlinePlayers,
+        features,
         activeBotsCount,
       }}
     >

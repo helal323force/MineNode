@@ -8,8 +8,8 @@ import { fileURLToPath } from 'url';
 import { botManager } from './server/botManager.js';
 import { parseZipFeature, validateFeaturePackage } from './server/featureSandbox.js';
 import { verifyAuthToken, requireAdmin, userCustomLimits, ADMIN_EMAIL } from './server/authMiddleware.js';
-import { CustomFeature, ActivityLog } from './src/types.js';
-import { db } from './server/firebaseAdmin.js';
+import { CustomFeature, ActivityLog, BotProfile } from './src/types.js';
+import { db, storage } from './server/firebaseAdmin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -182,7 +182,40 @@ async function initializeFeatures() {
   }
 }
 
-initializeFeatures().catch(console.error);
+async function recoverBots() {
+  console.log('[Recovery] Scanning for active bot profiles...');
+  try {
+    const botsCol = db.collection('botProfiles');
+    const snapshot = await botsCol.where('status', '==', 'running').get();
+    
+    if (snapshot.empty) {
+      console.log('[Recovery] No active bots to recover.');
+      return;
+    }
+
+    const availableFeatures = Array.from(featuresStore.values());
+    let recoveredCount = 0;
+
+    for (const doc of snapshot.docs) {
+      const profile = doc.data() as BotProfile;
+      // Heartbeat check: If bot hasn't heartbeated in > 2 hours, maybe it's stale? 
+      // But for "reliable recovery", we should probably try to restart it anyway.
+      console.log(`[Recovery] Restarting bot: ${profile.name} (${profile.botUsername})`);
+      await botManager.startBot(profile, availableFeatures);
+      recoveredCount++;
+    }
+    console.log(`[Recovery] Successfully recovered ${recoveredCount} bot sessions.`);
+  } catch (error: any) {
+    console.error('[Recovery] Failed to recover bots:', error.message);
+  }
+}
+
+async function bootstrap() {
+  await initializeFeatures();
+  await recoverBots();
+}
+
+bootstrap().catch(console.error);
 
 // Multer memory storage for uploaded feature ZIPs
 const upload = multer({
@@ -194,9 +227,10 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Log activity helper
-function recordActivity(userId: string, userEmail: string, action: string, category: ActivityLog['category'], details: string) {
+async function recordActivity(userId: string, userEmail: string, action: string, category: ActivityLog['category'], details: string) {
+  const logId = `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
   const log: ActivityLog = {
-    id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    id: logId,
     userId,
     userEmail,
     action,
@@ -204,8 +238,15 @@ function recordActivity(userId: string, userEmail: string, action: string, categ
     details,
     timestamp: new Date().toISOString(),
   };
+  
   activityLogs.unshift(log);
   if (activityLogs.length > 500) activityLogs.pop();
+
+  try {
+    await db.collection('activityLogs').doc(logId).set(log);
+  } catch (e) {
+    console.error('[Persistence] Failed to sync activity log:', e);
+  }
 }
 
 // -------------------------------------------------------------
@@ -241,22 +282,40 @@ app.get('/api/system/metrics', (req: Request, res: Response) => {
 });
 
 // -------------------------------------------------------------
-// Authentication Verification
+// Authentication Verification & Profile Sync
 // -------------------------------------------------------------
-app.get('/api/auth/me', verifyAuthToken, (req: Request, res: Response) => {
+app.get('/api/auth/me', verifyAuthToken, async (req: Request, res: Response) => {
   const user = req.user!;
-  const custom = userCustomLimits.get(user.uid);
-  const botLimit = custom ? custom.botLimit : globalSettings.defaultBotLimit;
-  const featureLimit = custom ? custom.featureLimit : globalSettings.defaultFeatureLimit;
-  const isSuspended = custom ? custom.isSuspended : false;
+  
+  // Upsert user profile in Firestore
+  const userRef = db.collection('users').doc(user.uid);
+  const userDoc = await userRef.get();
+  
+  let profile;
+  if (!userDoc.exists) {
+    profile = {
+      uid: user.uid,
+      email: user.email,
+      role: user.role,
+      botLimit: globalSettings.defaultBotLimit,
+      featureLimit: globalSettings.defaultFeatureLimit,
+      isSuspended: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await userRef.set(profile);
+    recordActivity(user.uid, user.email, 'Profile Created', 'user', 'New user profile initialized in Firestore.');
+  } else {
+    profile = userDoc.data();
+    // Keep role in sync if it's the admin email
+    if (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase() && profile?.role !== 'admin') {
+      await userRef.update({ role: 'admin' });
+      profile!.role = 'admin';
+    }
+  }
 
   res.json({
-    uid: user.uid,
-    email: user.email,
-    role: user.role,
-    botLimit,
-    featureLimit,
-    isSuspended,
+    ...profile,
     activeBotsCount: botManager.getUserActiveCount(user.uid),
   });
 });
@@ -304,6 +363,18 @@ app.post('/api/bots/start', verifyAuthToken, async (req: Request, res: Response)
   const availableFeatures = Array.from(featuresStore.values());
   const result = await botManager.startBot(profile, availableFeatures);
 
+  if (result.success) {
+    try {
+      await db.collection('botProfiles').doc(profile.id).update({
+        status: 'running',
+        lastHeartbeat: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('[Persistence] Failed to update bot status in Firestore:', e);
+    }
+  }
+
   recordActivity(
     user.uid,
     user.email,
@@ -319,7 +390,7 @@ app.post('/api/bots/start', verifyAuthToken, async (req: Request, res: Response)
   res.json({ success: true, message: result.message });
 });
 
-app.post('/api/bots/stop', verifyAuthToken, (req: Request, res: Response) => {
+app.post('/api/bots/stop', verifyAuthToken, async (req: Request, res: Response) => {
   const user = req.user!;
   const { profileId } = req.body;
   if (!profileId) return res.status(400).json({ error: 'Missing profileId' });
@@ -330,6 +401,18 @@ app.post('/api/bots/stop', verifyAuthToken, (req: Request, res: Response) => {
   }
 
   const result = botManager.stopBot(profileId, `Manual stop by ${user.email}`);
+  
+  if (result.success) {
+    try {
+      await db.collection('botProfiles').doc(profileId).update({
+        status: 'stopped',
+        updatedAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('[Persistence] Failed to update bot status in Firestore:', e);
+    }
+  }
+
   recordActivity(user.uid, user.email, 'Stop Bot', 'bot', `Stopped bot session for profile ID ${profileId}`);
 
   if (!result.success) {
@@ -349,6 +432,19 @@ app.post('/api/bots/restart', verifyAuthToken, async (req: Request, res: Respons
 
   const availableFeatures = Array.from(featuresStore.values());
   const result = await botManager.restartBot(profile, availableFeatures);
+
+  if (result.success) {
+    try {
+      await db.collection('botProfiles').doc(profile.id).update({
+        status: 'running',
+        lastHeartbeat: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('[Persistence] Failed to update bot status in Firestore:', e);
+    }
+  }
+
   recordActivity(user.uid, user.email, 'Restart Bot', 'bot', `Restarted bot session for ${profile.name}`);
 
   if (!result.success) {
@@ -535,6 +631,22 @@ app.post('/api/features/upload', verifyAuthToken, upload.single('package'), asyn
 
   const m = parseResult.manifest;
   const featureId = `feat-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  
+  // Upload ZIP to Firebase Storage
+  const storagePath = `features/${user.uid}/${featureId}.zip`;
+  const bucket = storage.bucket();
+  const fileRef = bucket.file(storagePath);
+  
+  let downloadUrl = '';
+  try {
+    await fileRef.save(file.buffer, {
+      metadata: { contentType: 'application/zip' },
+      public: true,
+    });
+    downloadUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+  } catch (e: any) {
+    console.warn('[Storage] Upload failed, proceeding with code-only storage:', e.message);
+  }
 
   const newFeature: CustomFeature = {
     id: featureId,
@@ -548,6 +660,8 @@ app.post('/api/features/upload', verifyAuthToken, upload.single('package'), asyn
     permissions: m.permissions || [],
     configSchema: m.configSchema ? JSON.stringify(m.configSchema) : undefined,
     code: parseResult.code,
+    storagePath: storagePath,
+    downloadUrl: downloadUrl,
     isPublic: false,
     status: 'private',
     createdAt: new Date().toISOString(),
@@ -556,7 +670,11 @@ app.post('/api/features/upload', verifyAuthToken, upload.single('package'), asyn
 
   featuresStore.set(featureId, newFeature);
   botManager.registerFeature(newFeature);
-  await db.collection('features').doc(featureId).set(newFeature);
+  try {
+    await db.collection('features').doc(featureId).set(newFeature);
+  } catch (e) {
+    console.error('[Persistence] Failed to sync feature metadata:', e);
+  }
 
   recordActivity(
     user.uid,

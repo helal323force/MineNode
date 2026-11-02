@@ -1,97 +1,152 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Default deny all access
+    // ---------------------------------------------------------
+    // 1. GLOBAL SAFETY NET
+    // ---------------------------------------------------------
     match /{document=**} {
       allow read, write: if false;
     }
 
+    // ---------------------------------------------------------
+    // 2. GLOBAL HELPERS
+    // ---------------------------------------------------------
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
     }
 
     function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email == 'wingxmc26@gmail.com' ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
       );
     }
 
-    // Helper functions
     function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128;
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // USERS COLLECTION
+    // ---------------------------------------------------------
+    // 3. VALIDATION BLUEPRINTS
+    // ---------------------------------------------------------
+    
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'role', 'botLimit', 'featureLimit']) &&
+             data.keys().hasOnly(['email', 'displayName', 'role', 'botLimit', 'featureLimit', 'isSuspended', 'createdAt', 'updatedAt']) &&
+             data.email is string && data.email.size() <= 128 &&
+             data.role in ['user', 'admin'] &&
+             data.botLimit is int && data.botLimit >= 0 && data.botLimit <= 100 &&
+             data.featureLimit is int && data.featureLimit >= 0 && data.featureLimit <= 50 &&
+             data.isSuspended is bool;
+    }
+
+    function isValidBotProfile(data) {
+      return data.keys().hasAll(['userId', 'name', 'serverHost', 'serverPort', 'botUsername', 'authType']) &&
+             data.keys().hasOnly(['userId', 'name', 'serverHost', 'serverPort', 'botUsername', 'authType', 'version', 'autoReconnect', 'reconnectDelay', 'hostType', 'activeFeatures', 'featureConfigs', 'createdAt', 'updatedAt']) &&
+             data.userId == request.auth.uid &&
+             data.name is string && data.name.size() <= 64 &&
+             data.serverHost is string && data.serverHost.size() <= 128 &&
+             data.serverPort is int && data.serverPort >= 1 && data.serverPort <= 65535 &&
+             data.botUsername is string && data.botUsername.size() <= 32 &&
+             data.authType in ['offline', 'microsoft'] &&
+             (!('activeFeatures' in data) || (data.activeFeatures is list && data.activeFeatures.size() <= 20));
+    }
+
+    function isValidFeature(data) {
+      return data.keys().hasAll(['userId', 'name', 'version', 'entryPoint', 'code', 'status']) &&
+             data.keys().hasOnly(['userId', 'authorEmail', 'name', 'description', 'version', 'entryPoint', 'botApiVersion', 'permissions', 'configSchema', 'code', 'storagePath', 'downloadUrl', 'isPublic', 'status', 'createdAt', 'updatedAt']) &&
+             data.userId == request.auth.uid &&
+             data.name is string && data.name.size() <= 64 &&
+             data.version is string && data.version.size() <= 16 &&
+             data.entryPoint is string && data.entryPoint.size() <= 64 &&
+             data.code is string && data.code.size() <= 50000 &&
+             data.status in ['private', 'pending', 'approved', 'rejected', 'suspended'] &&
+             (!('permissions' in data) || (data.permissions is list && data.permissions.size() <= 10));
+    }
+
+    function isValidActivityLog(data) {
+      return data.keys().hasAll(['userId', 'action', 'category', 'timestamp']) &&
+             data.keys().hasOnly(['userId', 'userEmail', 'action', 'category', 'details', 'timestamp']) &&
+             data.action is string && data.action.size() <= 100 &&
+             data.category in ['user', 'admin', 'bot', 'feature', 'security'] &&
+             (!('details' in data) || (data.details is string && data.details.size() <= 1000));
+    }
+
+    // ---------------------------------------------------------
+    // 4. COLLECTION MATCHES
+    // ---------------------------------------------------------
+
+    // Users
     match /users/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isAdmin();
-      allow create: if isOwner(userId) &&
-        request.resource.data.role == 'user' &&
-        request.resource.data.isSuspended == false &&
-        request.resource.data.botLimit == 3 &&
-        request.resource.data.featureLimit == 5;
-      allow update: if isAdmin() || (
-        isOwner(userId) &&
-        request.resource.data.role == resource.data.role &&
-        request.resource.data.botLimit == resource.data.botLimit &&
-        request.resource.data.featureLimit == resource.data.featureLimit &&
-        request.resource.data.isSuspended == resource.data.isSuspended
-      );
-      allow delete: if isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && incoming().role == 'user';
+      allow update: if isAdmin() && isValidUser(incoming());
     }
 
-    // BOT PROFILES
+    // Bot Profiles
     match /botProfiles/{profileId} {
-      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
       allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid &&
-        request.resource.data.name is string && request.resource.data.name.size() <= 64 &&
-        request.resource.data.serverHost is string && request.resource.data.serverHost.size() <= 128 &&
-        request.resource.data.serverPort is number &&
-        request.resource.data.botUsername is string && request.resource.data.botUsername.size() <= 32;
-      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()) &&
-        (isAdmin() || request.resource.data.userId == resource.data.userId);
-      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(profileId) && isValidBotProfile(incoming()) && incoming().createdAt == request.time;
+      allow update: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin()) && 
+                    isValidBotProfile(incoming()) && 
+                    incoming().userId == existing().userId &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().updatedAt == request.time;
+      allow delete: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
     }
 
-    // FEATURES
+    // Features
     match /features/{featureId} {
       allow get: if isSignedIn() && (
-        resource.data.userId == request.auth.uid ||
-        (resource.data.isPublic == true && resource.data.status == 'approved') ||
+        existing().userId == request.auth.uid || 
+        (existing().isPublic == true && existing().status == 'approved') ||
         isAdmin()
       );
       allow list: if isSignedIn() && (
-        resource.data.userId == request.auth.uid ||
+        resource.data.userId == request.auth.uid || 
         (resource.data.isPublic == true && resource.data.status == 'approved') ||
         isAdmin()
       );
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid &&
-        request.resource.data.name is string && request.resource.data.name.size() <= 64 &&
-        (request.resource.data.status == 'private' || request.resource.data.status == 'pending');
-      allow update: if isAdmin() || (
-        isSignedIn() && resource.data.userId == request.auth.uid &&
-        request.resource.data.userId == resource.data.userId &&
-        (request.resource.data.status == resource.data.status || request.resource.data.status == 'pending')
-      );
-      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(featureId) && isValidFeature(incoming()) && 
+                    incoming().status == 'private' &&
+                    incoming().createdAt == request.time;
+      allow update: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin()) && 
+                    isValidFeature(incoming()) &&
+                    incoming().userId == existing().userId &&
+                    incoming().createdAt == existing().createdAt &&
+                    (
+                      // Action: User update basic info
+                      (incoming().status == existing().status || (existing().status == 'private' && incoming().status == 'pending')) ||
+                      // Action: Admin moderation
+                      isAdmin()
+                    ) &&
+                    incoming().updatedAt == request.time;
+      allow delete: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
     }
 
-    // ACTIVITY LOGS
+    // Activity Logs
     match /activityLogs/{logId} {
-      allow get: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
+      allow get: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if false; // System only (Admin SDK)
+      allow update, delete: if false;
     }
 
-    // SYSTEM SETTINGS
+    // System Settings
     match /systemSettings/{settingId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();

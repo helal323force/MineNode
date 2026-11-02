@@ -23,6 +23,7 @@ const DEFAULT_MACROS: ChatMacro[] = [
   { id: 'm4', name: 'Claim Daily Kit', command: '/kit claim', category: 'utility', autoRepeat: false, repeatIntervalSec: 0 },
   { id: 'm5', name: 'Feed & Heal', command: '/feed', category: 'utility', autoRepeat: false, repeatIntervalSec: 0 },
   { id: 'm6', name: 'Fix Armor & Tools', command: '/fix all', category: 'utility', autoRepeat: false, repeatIntervalSec: 0 },
+  { id: 'm7', name: 'Edit Player', command: '/edit', category: 'utility', autoRepeat: false, repeatIntervalSec: 0 },
 ];
 
 export function MacroCommandManager({ onExecuteMacro, status }: MacroCommandManagerProps) {

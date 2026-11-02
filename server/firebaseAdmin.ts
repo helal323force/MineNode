@@ -1,59 +1,60 @@
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
+import { getStorage } from 'firebase-admin/storage';
 
+import firebaseConfig from '../firebase-applet-config.json';
+
+// Initialize Firebase Admin safely
 let dbInstance: any;
-
-function createUnavailableFirestore(reason: string) {
-  console.warn(`[Firebase] Firestore unavailable: ${reason}`);
-  return new Proxy({}, {
-    get: (_target, prop) => {
-      return () => {
-        throw new Error(
-          `Firestore is unavailable. Configure FIREBASE_SERVICE_ACCOUNT_KEY in the hosting provider environment. (${String(prop)})`
-        );
-      };
-    },
-  });
-}
+let authInstance: any;
+let storageInstance: any;
 
 try {
-  const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  const fallbackProjectId =
-    process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
-
-  if (!serviceAccountRaw || !serviceAccountRaw.trim()) {
-    // Avoid attempting Google metadata-server credentials on hosted Node services.
-    dbInstance = createUnavailableFirestore(
-      'FIREBASE_SERVICE_ACCOUNT_KEY is not set; server is running without Firestore persistence.'
-    );
-  } else {
-    const serviceAccount = JSON.parse(serviceAccountRaw);
-
-    if (!serviceAccount.project_id || !serviceAccount.client_email || !serviceAccount.private_key) {
-      throw new Error(
-        'FIREBASE_SERVICE_ACCOUNT_KEY must contain project_id, client_email and private_key.'
-      );
-    }
-
-    if (!getApps().length) {
+  if (!getApps().length) {
+    const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    const fallbackProjectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || firebaseConfig.projectId;
+    
+    if (serviceAccountKey) {
+      const parsedKey = JSON.parse(serviceAccountKey);
       initializeApp({
-        credential: cert({
-          projectId: serviceAccount.project_id,
-          clientEmail: serviceAccount.client_email,
-          privateKey: String(serviceAccount.private_key).replace(/\\n/g, '\n'),
-        }),
-        projectId: serviceAccount.project_id || fallbackProjectId,
+        credential: cert(parsedKey),
+        projectId: parsedKey.project_id || fallbackProjectId,
+        storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfig.storageBucket || `${parsedKey.project_id}.appspot.com`
       });
+      console.log('[Firebase] Admin SDK initialized with Service Account.');
+    } else if (process.env.NODE_ENV === 'production') {
+      // In production on Render/Railway, ADC will fail noisy. 
+      // We force a mock-like state unless the key is provided to keep logs clean.
+      throw new Error('Missing FIREBASE_SERVICE_ACCOUNT_KEY in production environment.');
+    } else {
+      initializeApp({ 
+        projectId: fallbackProjectId || 'minenode-hosting',
+        storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfig.storageBucket
+      });
+      console.log('[Firebase] Admin SDK initialized with default credentials.');
     }
-
-    dbInstance = getFirestore();
-    console.log('[Firebase] Admin SDK initialized with Service Account.');
   }
+  dbInstance = getFirestore();
+  authInstance = getAuth();
+  storageInstance = getStorage();
 } catch (error: any) {
-  dbInstance = createUnavailableFirestore(
-    error?.message || 'Invalid Firebase service account configuration.'
-  );
+  console.warn('[Firebase] Running in no-persistence mode (Admin SDK disabled).');
+  
+  const errorProxy = (name: string) => new Proxy({}, {
+    get: (target, prop) => {
+      return () => {
+        throw new Error(`${name} operation "${String(prop)}" failed: Missing FIREBASE_SERVICE_ACCOUNT_KEY.`);
+      };
+    }
+  });
+
+  dbInstance = errorProxy('Firestore');
+  authInstance = errorProxy('Auth');
+  storageInstance = errorProxy('Storage');
 }
 
 export const db = dbInstance;
+export const auth = authInstance;
+export const storage = storageInstance;
 export { FieldValue };

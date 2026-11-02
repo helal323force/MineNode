@@ -7,10 +7,12 @@
       "properties": {
         "email": {
           "type": "string",
+          "format": "email",
           "description": "User email address"
         },
         "displayName": {
           "type": "string",
+          "maxLength": 64,
           "description": "User display name"
         },
         "role": {
@@ -20,10 +22,14 @@
         },
         "botLimit": {
           "type": "number",
+          "minimum": 0,
+          "maximum": 100,
           "description": "Maximum active bots for this user"
         },
         "featureLimit": {
           "type": "number",
+          "minimum": 0,
+          "maximum": 50,
           "description": "Maximum uploaded features for this user"
         },
         "isSuspended": {
@@ -32,10 +38,12 @@
         },
         "createdAt": {
           "type": "string",
+          "format": "date-time",
           "description": "ISO timestamp"
         },
         "updatedAt": {
           "type": "string",
+          "format": "date-time",
           "description": "ISO timestamp"
         }
       },
@@ -48,6 +56,7 @@
       "properties": {
         "userId": {
           "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
           "description": "Owner user ID"
         },
         "name": {
@@ -62,6 +71,8 @@
         },
         "serverPort": {
           "type": "number",
+          "minimum": 1,
+          "maximum": 65535,
           "description": "Minecraft server port"
         },
         "botUsername": {
@@ -85,10 +96,29 @@
         },
         "reconnectDelay": {
           "type": "number",
+          "minimum": 1,
+          "maximum": 300,
           "description": "Reconnect delay in seconds"
+        },
+        "hostType": {
+          "type": "string",
+          "enum": ["custom", "railway", "render"],
+          "description": "Hosting platform type"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["stopped", "running"],
+          "description": "Target status for the bot"
+        },
+        "lastHeartbeat": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last time the worker confirmed this bot is active"
         },
         "activeFeatures": {
           "type": "array",
+          "items": { "type": "string" },
+          "maxItems": 20,
           "description": "List of feature IDs enabled on this bot"
         },
         "featureConfigs": {
@@ -97,10 +127,12 @@
         },
         "createdAt": {
           "type": "string",
+          "format": "date-time",
           "description": "Creation timestamp"
         },
         "updatedAt": {
           "type": "string",
+          "format": "date-time",
           "description": "Update timestamp"
         }
       },
@@ -113,10 +145,12 @@
       "properties": {
         "userId": {
           "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
           "description": "Uploader user ID"
         },
         "authorEmail": {
           "type": "string",
+          "format": "email",
           "description": "Author email"
         },
         "name": {
@@ -146,6 +180,8 @@
         },
         "permissions": {
           "type": "array",
+          "items": { "type": "string" },
+          "maxItems": 10,
           "description": "Requested sandbox permissions"
         },
         "configSchema": {
@@ -154,7 +190,17 @@
         },
         "code": {
           "type": "string",
+          "maxLength": 50000,
           "description": "Extracted validated javascript code"
+        },
+        "storagePath": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Path to ZIP in Firebase Storage"
+        },
+        "downloadUrl": {
+          "type": "string",
+          "description": "Direct download link for ZIP"
         },
         "isPublic": {
           "type": "boolean",
@@ -167,10 +213,12 @@
         },
         "createdAt": {
           "type": "string",
+          "format": "date-time",
           "description": "Creation timestamp"
         },
         "updatedAt": {
           "type": "string",
+          "format": "date-time",
           "description": "Update timestamp"
         }
       },
@@ -183,10 +231,12 @@
       "properties": {
         "userId": {
           "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
           "description": "User ID who performed or owns the action"
         },
         "userEmail": {
           "type": "string",
+          "format": "email",
           "description": "User email address"
         },
         "action": {
@@ -206,6 +256,7 @@
         },
         "timestamp": {
           "type": "string",
+          "format": "date-time",
           "description": "ISO timestamp"
         }
       },
@@ -218,10 +269,12 @@
       "properties": {
         "defaultBotLimit": {
           "type": "number",
+          "minimum": 1,
           "description": "Default maximum active bots per user"
         },
         "defaultFeatureLimit": {
           "type": "number",
+          "minimum": 1,
           "description": "Default maximum uploaded features per user"
         },
         "allowPublicSubmissions": {
@@ -230,6 +283,7 @@
         },
         "updatedAt": {
           "type": "string",
+          "format": "date-time",
           "description": "Last update timestamp"
         }
       },
@@ -259,3 +313,4 @@
     }
   }
 }
+

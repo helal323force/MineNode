@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.js';
+import { useBot } from '../context/BotContext.js';
 import { CustomFeature } from '../types.js';
 import { 
   Upload, 
@@ -22,29 +23,23 @@ interface FeaturesPageProps {
 
 export function FeaturesPage({ setCurrentTab }: FeaturesPageProps) {
   const { authFetch, account, currentUser } = useAuth();
-  const [features, setFeatures] = useState<CustomFeature[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { features } = useBot();
+  const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [selectedFeatureCode, setSelectedFeatureCode] = useState<CustomFeature | null>(null);
 
-  const fetchFeatures = async () => {
-    try {
-      const res = await authFetch('/api/features');
-      if (res.ok) {
-        const data = await res.json();
-        setFeatures(data);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
+  // We no longer need fetchFeatures as features are synced in real-time via BotContext
+  // But we might still want to trigger initial loading state if needed.
+  useEffect(() => {
+    if (features.length === 0) {
+      // Small delay to allow Firestore to sync
+      const t = setTimeout(() => setLoading(false), 800);
+      return () => clearTimeout(t);
+    } else {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchFeatures();
-  }, []);
+  }, [features]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -71,7 +66,6 @@ export function FeaturesPage({ setCurrentTab }: FeaturesPageProps) {
         setStatusMessage({ type: 'error', text: data.error || 'Upload validation failed.' });
       } else {
         setStatusMessage({ type: 'success', text: `Feature "${data.feature.name}" uploaded and validated successfully!` });
-        await fetchFeatures();
       }
     } catch (err: any) {
       setStatusMessage({ type: 'error', text: err.message || 'Network upload error' });
@@ -87,7 +81,6 @@ export function FeaturesPage({ setCurrentTab }: FeaturesPageProps) {
       const res = await authFetch(`/api/features/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setStatusMessage({ type: 'success', text: `Feature "${name}" deleted.` });
-        await fetchFeatures();
       }
     } catch (e) {}
   };
@@ -97,7 +90,6 @@ export function FeaturesPage({ setCurrentTab }: FeaturesPageProps) {
       const res = await authFetch(`/api/features/${id}/submit-public`, { method: 'POST' });
       if (res.ok) {
         setStatusMessage({ type: 'success', text: `Feature "${name}" submitted for admin review.` });
-        await fetchFeatures();
       }
     } catch (e) {}
   };

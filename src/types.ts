@@ -35,6 +35,10 @@ export interface BotProfile {
   stealthNinjaMode?: boolean;
   activeFeatures: string[];
   featureConfigs?: Record<string, Record<string, any>>;
+  status?: 'stopped' | 'running';
+  lastHeartbeat?: string;
+  customCommandName?: string;
+  customCommandPattern?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -167,6 +171,8 @@ export interface CustomFeature {
   permissions: string[];
   configSchema?: string; // serialized JSON
   code: string;
+  storagePath?: string;
+  downloadUrl?: string;
   isPublic: boolean;
   status: 'private' | 'pending' | 'approved' | 'rejected' | 'suspended';
   createdAt: string;

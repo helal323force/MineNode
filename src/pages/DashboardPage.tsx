@@ -81,6 +81,8 @@ export function DashboardPage({ setCurrentTab }: DashboardPageProps) {
   const [autoFish, setAutoFish] = useState(false);
   const [autoUpload, setAutoUpload] = useState(false);
   const [hostType, setHostType] = useState<'custom' | 'railway' | 'render'>('custom');
+  const [customCommandName, setCustomCommandName] = useState('Edit');
+  const [customCommandPattern, setCustomCommandPattern] = useState('/edit {player}');
 
   const runningCount = profiles.filter(p => activeStates[p.id]?.status === 'online').length;
   const activeCount = profiles.filter(p => {
@@ -112,6 +114,8 @@ export function DashboardPage({ setCurrentTab }: DashboardPageProps) {
     setAutoFish(false);
     setAutoUpload(false);
     setHostType('custom');
+    setCustomCommandName('Edit');
+    setCustomCommandPattern('/edit {player}');
     setModalOpen(true);
   };
 
@@ -137,6 +141,8 @@ export function DashboardPage({ setCurrentTab }: DashboardPageProps) {
     setAutoFish(Boolean(p.autoFish));
     setAutoUpload(Boolean(p.autoUpload));
     setHostType(p.hostType || 'custom');
+    setCustomCommandName(p.customCommandName || 'Edit');
+    setCustomCommandPattern(p.customCommandPattern || '/edit {player}');
     setModalOpen(true);
   };
 
@@ -168,6 +174,8 @@ export function DashboardPage({ setCurrentTab }: DashboardPageProps) {
       autoFish,
       autoUpload,
       hostType,
+      customCommandName,
+      customCommandPattern,
       activeFeatures: editingProfile ? editingProfile.activeFeatures : [],
     };
 
@@ -1033,6 +1041,40 @@ export function DashboardPage({ setCurrentTab }: DashboardPageProps) {
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Custom Quick Command Section */}
+                <div className="pt-3 border-t border-neutral-800/80 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Terminal className="w-4 h-4 text-emerald-400" />
+                    <div>
+                      <div className="text-xs font-semibold text-white">Custom Quick Action</div>
+                      <div className="text-[11px] text-neutral-500">Configure a custom command shortcut (e.g. /edit)</div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-medium text-neutral-400 mb-1 uppercase tracking-wider">Button Label</label>
+                      <input
+                        type="text"
+                        value={customCommandName}
+                        onChange={(e) => setCustomCommandName(e.target.value)}
+                        placeholder="e.g. Edit"
+                        className="w-full px-3 py-2 bg-[#16181b] border border-neutral-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-medium text-neutral-400 mb-1 uppercase tracking-wider">Command Pattern</label>
+                      <input
+                        type="text"
+                        value={customCommandPattern}
+                        onChange={(e) => setCustomCommandPattern(e.target.value)}
+                        placeholder="/edit {player}"
+                        className="w-full px-3 py-2 bg-[#16181b] border border-neutral-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                      />
+                      <div className="text-[9px] text-neutral-500 mt-1">Use {`{player}`} for username placeholder</div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Built-in Automation Suite Configuration */}
