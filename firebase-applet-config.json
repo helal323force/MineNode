@@ -1,12 +1,10 @@
+
 {
-  "projectId": "gen-lang-client-0924182593",
-  "appId": "1:1089526929155:web:eaa2cf9332f6c8c6193b36",
-  "apiKey": "AIzaSyDKwjQTClepdoNaEUDBkTjjUXsCs0Lpqb8",
-  "authDomain": "gen-lang-client-0924182593.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-minebothost-04dfc921-c616-4b9c-8496-e2a9cea4ccc8",
-  "storageBucket": "gen-lang-client-0924182593.firebasestorage.app",
-  "messagingSenderId": "1089526929155",
-  "measurementId": "",
-  "oAuthClientId": "1089526929155-ciq56s5fqagucbd5e42egpfkq68gadag.apps.googleusercontent.com",
-  "recaptchaSiteKey": ""
+  "projectId": "minecraft-bot-hosting",
+  "appId": "1:477684008962:web:84773428fe03375617ff1b",
+  "apiKey": "AIzaSyD-CPX3R-MmTE9_qJn3hzgd6XVckHy_BRw",
+  "authDomain": "minecraft-bot-hosting.firebaseapp.com",
+  "storageBucket": "minecraft-bot-hosting.firebasestorage.app",
+  "messagingSenderId": "477684008962",
+  "measurementId": "G-8E8Z2FGXVQ"
 }
